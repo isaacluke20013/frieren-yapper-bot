@@ -48,22 +48,7 @@ const DEFAULT_QUESTIONS = [
   'Do you agree to the following? You can be removed from the mod team at any time if accepted, you must follow the rules, and if you are rejected you cannot make a big fuss about it.'
 ];
 
-const DATA_FOLDER = path.join(
-  process.env.LOCALAPPDATA || os.homedir(),
-  'FrierenYapperBot'
-);
-
-if (!fs.existsSync(DATA_FOLDER)) {
-  fs.mkdirSync(DATA_FOLDER, {
-    recursive: true
-  });
-}
-
-const APPLICATION_DATA_FILE = path.join(
-  DATA_FOLDER,
-  'staff-applications.json'
-);
-
+const APPLICATION_DATA_FILE = '/data/staff-applications.json';
 const MANGA = {
   latestChapter: 147,
   latestRelease: 'October 14, 2025',
