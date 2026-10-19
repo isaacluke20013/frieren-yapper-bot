@@ -4,6 +4,8 @@ import path from 'node:path';
 import os from 'node:os';
 
 const token = process.env.YAPPER_BOT_TOKEN;
+const frierenOwnerId = process.env.FRIEREN_OWNER_ID || null;
+
 if (!token) {
   console.error('Missing YAPPER_BOT_TOKEN');
   process.exit(1);
@@ -13,10 +15,9 @@ const bot = new Bot(token);
 
 const WIKI_API = 'https://frieren.fandom.com/api.php';
 const WIKI_BASE = 'https://frieren.fandom.com/wiki/';
-
 const STAFF_PANEL_CHANNEL_NAME = 'staff-applications';
 const APPLICATION_CATEGORY_NAME = 'Staff Applications';
-const FALLBACK_BOT_ROLE_NAME = 'Bot';
+const REQUIRED_BOT_ROLE_NAME = 'Bot';
 
 const DEFAULT_STAFF_ROLE_NAMES = [
   'Owner',
@@ -48,21 +49,7 @@ const DEFAULT_QUESTIONS = [
   'Do you agree to the following? You can be removed from the mod team at any time if accepted, you must follow the rules, and if you are rejected you cannot make a big fuss about it.'
 ];
 
-const DATA_FOLDER = path.join(
-  process.env.LOCALAPPDATA || os.homedir(),
-  'FrierenYapperBot'
-);
-
-if (!fs.existsSync(DATA_FOLDER)) {
-  fs.mkdirSync(DATA_FOLDER, {
-    recursive: true
-  });
-}
-
-const APPLICATION_DATA_FILE = path.join(
-  DATA_FOLDER,
-  'staff-applications.json'
-);
+const APPLICATION_DATA_FILE = '/data/staff-applications.json';
 
 const MANGA = {
   latestChapter: 147,
@@ -163,22 +150,24 @@ function saveApplicationData() {
 // GENERAL HELPERS
 // ============================================================
 
-const pickRandom = array =>
-  array[
-    Math.floor(
-      Math.random() *
-      array.length
-    )
-  ];
-
-const wait = ms =>
-  new Promise(
-    resolve =>
-      setTimeout(
-        resolve,
-        ms
+const pickRandom =
+  array =>
+    array[
+      Math.floor(
+        Math.random() *
+        array.length
       )
-  );
+    ];
+
+const wait =
+  ms =>
+    new Promise(
+      resolve =>
+        setTimeout(
+          resolve,
+          ms
+        )
+    );
 
 function safeChannelName(
   username = 'applicant'
@@ -212,6 +201,26 @@ function getContextUserId(
     context?.user?.id ||
     context?.author?.id ||
     null
+  );
+}
+
+function isFrierenOwner(
+  userId
+) {
+  if (
+    !frierenOwnerId ||
+    !userId
+  ) {
+    return false;
+  }
+
+  return (
+    String(
+      userId
+    ) ===
+    String(
+      frierenOwnerId
+    )
   );
 }
 
@@ -397,29 +406,23 @@ async function getServerObject(
   serverId
 ) {
   try {
-    return await bot.server(
-      serverId
+    const servers =
+      await bot.servers();
+
+    return (
+      servers.find(
+        server =>
+          String(
+            server.id
+          ) ===
+          String(
+            serverId
+          )
+      ) ||
+      null
     );
   } catch {
-    try {
-      const servers =
-        await bot.servers();
-
-      return (
-        servers.find(
-          server =>
-            String(
-              server.id
-            ) ===
-            String(
-              serverId
-            )
-        ) ||
-        null
-      );
-    } catch {
-      return null;
-    }
+    return null;
   }
 }
 
@@ -690,7 +693,7 @@ async function getBotRoleIds(
       const fallback =
         findRoleByName(
           roles,
-          FALLBACK_BOT_ROLE_NAME
+          REQUIRED_BOT_ROLE_NAME
         );
 
       if (fallback) {
@@ -829,8 +832,26 @@ async function userHasStaffRole(
   }
 }
 
+async function userCanConfigure(
+  serverId,
+  userId
+) {
+  if (
+    isFrierenOwner(
+      userId
+    )
+  ) {
+    return true;
+  }
+
+  return userHasStaffRole(
+    serverId,
+    userId
+  );
+}
+
 // ============================================================
-// APPLICATION SETUP CONFIG
+// SETUP CONFIG
 // ============================================================
 
 async function getSetupConfig(
@@ -930,7 +951,12 @@ async function getSetupConfig(
 
   const cleaned = {
     appRoleIds,
-    questions
+    questions,
+
+    applicationsOpen:
+      existing
+        .applicationsOpen !==
+      false
   };
 
   applicationData
@@ -1047,6 +1073,37 @@ async function saveQuestions(
   saveApplicationData();
 }
 
+async function setApplicationsOpen(
+  serverId,
+  open
+) {
+  const config =
+    await getSetupConfig(
+      serverId
+    );
+
+  config.applicationsOpen =
+    !!open;
+
+  applicationData
+    .setupConfig[
+      serverId
+    ] = config;
+
+  saveApplicationData();
+}
+
+async function applicationsAreOpen(
+  serverId
+) {
+  return (
+    await getSetupConfig(
+      serverId
+    )
+  ).applicationsOpen !==
+    false;
+}
+
 async function getSetupStatus(
   serverId
 ) {
@@ -1055,7 +1112,8 @@ async function getSetupStatus(
     appRoles,
     staffConfig,
     roles,
-    questions
+    questions,
+    setupConfig
   ] =
     await Promise.all([
       getPanelChannel(
@@ -1075,6 +1133,10 @@ async function getSetupStatus(
       ),
 
       getApplicationQuestions(
+        serverId
+      ),
+
+      getSetupConfig(
         serverId
       )
     ]);
@@ -1101,14 +1163,27 @@ async function getSetupStatus(
       )
       .filter(Boolean);
 
+  const botRole =
+    findRoleByName(
+      roles,
+      REQUIRED_BOT_ROLE_NAME
+    );
+
   return {
     panelChannel,
     appRoles,
     staffRoles,
     acceptedRole,
     questions,
+    botRole,
+
+    applicationsOpen:
+      setupConfig
+        .applicationsOpen !==
+      false,
 
     ready:
+      !!botRole &&
       !!panelChannel &&
       appRoles.length ===
         10 &&
@@ -1465,7 +1540,7 @@ const QOTD = [
   'What moment made you start loving the series?',
   'Who has had the biggest influence on Frieren?',
   'Favorite member of the original Hero Party?',
-  'Favorite member of Frieren’s current party?',
+  'Favorite member of Frierenâs current party?',
   'Which character has developed the most?',
   'What is your favorite anime opening or ending?',
   'Who would win a mage free-for-all?',
@@ -1713,7 +1788,7 @@ function formatApplicationQuestions(
       .join(
         '\n\n'
       ) +
-    `\n\nPlease number your answers **1–${questions.length}**.`
+    `\n\nPlease number your answers **1â${questions.length}**.`
   );
 }
 
@@ -2216,7 +2291,58 @@ async function reconcileApplications() {
 // APPLICATION PANEL
 // ============================================================
 
-async function ensureStaffApplicationPanel(
+function buildApplicationPanel(
+  open
+) {
+  const embed =
+    new Embed()
+      .title(
+        'Staff Applications'
+      )
+      .description(
+        open
+          ? `Interested in joining the staff team?
+
+Press the button below to start an application.
+
+If all 10 application slots are being used, you will automatically be placed into the queue.`
+          : `Staff applications are currently **closed**.
+
+The staff team is not accepting new applications right now. Check back later.`
+      )
+      .color(
+        open
+          ? '#8fbc8f'
+          : '#95a5a6'
+      )
+      .footer(
+        'Frieren Staff Applications'
+      );
+
+  const button =
+    open
+      ? Button.primary(
+          'Apply for Staff',
+          'staff_application_open'
+        )
+      : Button.secondary(
+          'Applications Closed',
+          'staff_application_open'
+        ).disabled(
+          true
+        );
+
+  return {
+    embed,
+
+    controls:
+      new Row(
+        button
+      )
+  };
+}
+
+async function refreshStaffApplicationPanel(
   serverId
 ) {
   try {
@@ -2233,14 +2359,24 @@ async function ensureStaffApplicationPanel(
       return false;
     }
 
+    const open =
+      await applicationsAreOpen(
+        serverId
+      );
+
+    const view =
+      buildApplicationPanel(
+        open
+      );
+
     const recentMessages =
       await bot.messages(
         panelChannel.id,
         50
       );
 
-    const panelAlreadyExists =
-      recentMessages.some(
+    const existingPanel =
+      recentMessages.find(
         message =>
           message.author_id ===
             bot.me?.id &&
@@ -2252,62 +2388,48 @@ async function ensureStaffApplicationPanel(
       );
 
     if (
-      panelAlreadyExists
+      existingPanel
     ) {
+      await bot.edit(
+        panelChannel.id,
+        existingPanel.id,
+        '',
+        {
+          embeds:
+            [view.embed],
+
+          components:
+            [view.controls]
+        }
+      );
+
       console.log(
-        '[applications] application panel already exists'
+        `[applications] application panel updated (${open ? 'open' : 'closed'})`
       );
 
       return true;
     }
-
-    const embed =
-      new Embed()
-        .title(
-          'Staff Applications'
-        )
-        .description(
-`Interested in joining the staff team?
-
-Press the button below to start an application.
-
-If all 10 application slots are being used, you will automatically be placed into the queue.`
-        )
-        .color(
-          '#8fbc8f'
-        )
-        .footer(
-          'Frieren Staff Applications'
-        );
-
-    const buttons =
-      new Row(
-        Button.primary(
-          'Apply for Staff',
-          'staff_application_open'
-        )
-      );
 
     await bot.send(
       panelChannel.id,
       '',
       {
         embeds:
-          [embed],
+          [view.embed],
 
         components:
-          [buttons]
+          [view.controls]
       }
     );
 
     console.log(
-      '[applications] application panel created'
+      `[applications] application panel created (${open ? 'open' : 'closed'})`
     );
 
     return true;
   } catch (err) {
     console.error(
-      '[applications] could not create application panel:',
+      '[applications] could not update application panel:',
       err.message
     );
 
@@ -2316,7 +2438,7 @@ If all 10 application slots are being used, you will automatically be placed int
 }
 
 // ============================================================
-// FRIEREN SETUP ROLE PICKER
+// ROLE PICKER
 // ============================================================
 
 const rolePickerSessions =
@@ -2507,7 +2629,7 @@ function rolePickerView(
               );
 
             const label =
-              `${selected ? '✓ ' : ''}${role.name}`
+              `${selected ? 'â ' : ''}${role.name}`
                 .slice(
                   0,
                   80
@@ -2541,7 +2663,7 @@ function rolePickerView(
   ) {
     controls.push(
       Button.secondary(
-        '← Prev',
+        'â Prev',
         `fsctl:${session.id}:prev`
       )
     );
@@ -2557,7 +2679,7 @@ function rolePickerView(
 
     controls.push(
       Button.secondary(
-        'Next →',
+        'Next â',
         `fsctl:${session.id}:next`
       )
     );
@@ -2618,7 +2740,7 @@ ${selectedNames.length
 ${selectedNames
   .map(
     name =>
-      `• ${name}`
+      `â¢ ${name}`
   )
   .join(
     '\n'
@@ -2714,6 +2836,7 @@ async function createRolePicker(
 
   return {
     session,
+
     view:
       rolePickerView(
         session
@@ -2722,7 +2845,7 @@ async function createRolePicker(
 }
 
 // ============================================================
-// SETUP DISPLAY
+// SETUP OVERVIEW
 // ============================================================
 
 async function buildSetupOverview(
@@ -2733,35 +2856,45 @@ async function buildSetupOverview(
       serverId
     );
 
+  const botRoleLine =
+    status.botRole
+      ? `â Role **${REQUIRED_BOT_ROLE_NAME}** exists â make sure it has **Administrator** enabled and is assigned to Frieren`
+      : `â Create a role named **${REQUIRED_BOT_ROLE_NAME}**, enable **Administrator**, and assign it to Frieren`;
+
   const channelLine =
     status.panelChannel
-      ? `✅ #${STAFF_PANEL_CHANNEL_NAME} exists`
-      : `❌ Create a channel named **#${STAFF_PANEL_CHANNEL_NAME}**`;
+      ? `â #${STAFF_PANEL_CHANNEL_NAME} exists`
+      : `â Create a channel named **#${STAFF_PANEL_CHANNEL_NAME}**`;
 
   const appRolesLine =
     status.appRoles.length ===
       10
-      ? '✅ 10 application roles selected'
-      : `❌ Create 10 temporary application roles, then choose them with **/frierensetup roles** (${status.appRoles.length}/10 currently selected)`;
+      ? 'â 10 application roles selected'
+      : `â Create 10 temporary application roles, then choose them with **/frierensetup roles** (${status.appRoles.length}/10 currently selected)`;
 
   const staffLine =
     status.staffRoles.length >
       0
-      ? `✅ Staff roles configured: ${status.staffRoles
+      ? `â Staff roles configured: ${status.staffRoles
           .map(
             role =>
               role.name
           )
-          .join(', ')}`
-      : '❌ Configure staff roles with **/staffroles add <role name>**';
+          .join(
+            ', '
+          )}`
+      : 'â Configure staff roles with **/staffroles add <role name>**';
 
   const acceptedLine =
     status.acceptedRole
-      ? `✅ Accepted applicants receive: ${status.acceptedRole.name}`
-      : '❌ Choose the accepted role with **/staffroles accept <role name>**';
+      ? `â Accepted applicants receive: ${status.acceptedRole.name}`
+      : 'â Choose the accepted role with **/staffroles accept <role name>**';
 
   const questionsLine =
-    `✅ ${status.questions.length} application question${status.questions.length === 1 ? '' : 's'} configured`;
+    `â ${status.questions.length} application question${status.questions.length === 1 ? '' : 's'} configured`;
+
+  const openLine =
+    `Applications: **${status.applicationsOpen ? 'OPEN' : 'CLOSED'}** â use **/applications open** or **/applications close**`;
 
   const embed =
     new Embed()
@@ -2771,39 +2904,48 @@ async function buildSetupOverview(
       .description(
 `Set up the application system in this order:
 
-**1. Create the applications channel**
+**1. Create Frieren's Bot role**
+Create a role named exactly **${REQUIRED_BOT_ROLE_NAME}**, give it **Administrator** permission, and assign that role to Frieren. Keep it high enough in the role list to manage the application roles.
+
+**2. Create the applications channel**
 Create a text channel named exactly:
 **#${STAFF_PANEL_CHANNEL_NAME}**
 
-**2. Create 10 temporary application roles**
+**3. Create 10 temporary application roles**
 They can have any names you want. Applicants receive one of these roles while their application is open.
 
-**3. Choose those 10 roles**
+**4. Choose those 10 roles**
 Run **/frierensetup roles** and click exactly 10 roles.
 
-**4. Choose which roles count as staff**
+**5. Choose which roles count as staff**
 Use **/staffroles** to view or change the staff roles.
 
-**5. Choose the role accepted applicants receive**
+**6. Choose the role accepted applicants receive**
 Use **/staffroles accept <role name>**.
 
-**6. Edit the application questions**
+**7. Edit the application questions**
 Use **/frierensetup questions** to view them.
 Use **/frierensetup question 1 <new question>** to replace one.
 Use **/frierensetup question add <question>** to add one.
 Use **/frierensetup question remove <number>** to remove one.
 Use **/frierensetup questions reset** to restore the defaults.
 
+**8. Open or close applications whenever you want**
+Use **/applications open**, **/applications close**, or **/applications status**.
+Closing applications stops new applications but does **not** delete applications that are already open.
+
 **Current setup**
+${botRoleLine}
 ${channelLine}
 ${appRolesLine}
 ${staffLine}
 ${acceptedLine}
 ${questionsLine}
+${openLine}
 
 ${status.ready
-  ? '✅ **Setup is ready.**'
-  : '⚠️ **Setup is not finished yet.**'}`
+  ? 'â **Setup is ready.**'
+  : 'â ï¸ **Setup is not finished yet.**'}`
       )
       .color(
         status.ready
@@ -3097,7 +3239,7 @@ bot.command(
 
       if (
         !(
-          await userHasStaffRole(
+          await userCanConfigure(
             serverId,
             userId
           )
@@ -3277,6 +3419,10 @@ Accepted applicants receive: ${acceptedRole
 
         saveApplicationData();
 
+        await refreshStaffApplicationPanel(
+          serverId
+        );
+
         return msg.reply(
           `**${role.name}** can now manage staff applications.`
         );
@@ -3328,6 +3474,10 @@ Accepted applicants receive: ${acceptedRole
 
         saveApplicationData();
 
+        await refreshStaffApplicationPanel(
+          serverId
+        );
+
         return msg.reply(
           `**${role.name}** will no longer be treated as staff by the application system.`
         );
@@ -3360,6 +3510,10 @@ Accepted applicants receive: ${acceptedRole
 
         saveApplicationData();
 
+        await refreshStaffApplicationPanel(
+          serverId
+        );
+
         return msg.reply(
           `accepted applicants will now receive **${role.name}**. i also added it to the staff roles.`
         );
@@ -3376,6 +3530,156 @@ Accepted applicants receive: ${acceptedRole
 
       return msg.reply(
         "couldn't update the staff role settings."
+      );
+    }
+  }
+);
+
+// ============================================================
+// /APPLICATIONS
+// ============================================================
+
+bot.command(
+  'applications',
+  'Open, close, or check staff applications',
+  async msg => {
+    try {
+      const serverId =
+        await getServerId(
+          msg
+        );
+
+      const userId =
+        getContextUserId(
+          msg
+        );
+
+      if (!serverId) {
+        return msg.reply(
+          "couldn't figure out what server this is in."
+        );
+      }
+
+      if (!userId) {
+        return msg.reply(
+          "couldn't figure out who ran the command."
+        );
+      }
+
+      if (
+        !(
+          await userCanConfigure(
+            serverId,
+            userId
+          )
+        )
+      ) {
+        return msg.reply(
+          'server staff/admin only.'
+        );
+      }
+
+      const action =
+        String(
+          msg.args ||
+          'status'
+        )
+          .trim()
+          .toLowerCase();
+
+      if (
+        action === 'open' ||
+        action === 'on'
+      ) {
+        await setApplicationsOpen(
+          serverId,
+          true
+        );
+
+        await refreshStaffApplicationPanel(
+          serverId
+        );
+
+        return msg.reply(
+          'staff applications are now **open**.'
+        );
+      }
+
+      if (
+        action === 'close' ||
+        action === 'closed' ||
+        action === 'off'
+      ) {
+        await setApplicationsOpen(
+          serverId,
+          false
+        );
+
+        await refreshStaffApplicationPanel(
+          serverId
+        );
+
+        return msg.reply(
+          'staff applications are now **closed**. existing application tickets will stay open.'
+        );
+      }
+
+      if (
+        action === 'status' ||
+        !action
+      ) {
+        const open =
+          await applicationsAreOpen(
+            serverId
+          );
+
+        const activeCount =
+          Object.values(
+            applicationData.active
+          ).filter(
+            app =>
+              String(
+                app.serverId
+              ) ===
+              String(
+                serverId
+              )
+          ).length;
+
+        const queuedCount =
+          applicationData.queue
+            .filter(
+              item =>
+                String(
+                  item.serverId
+                ) ===
+                String(
+                  serverId
+                )
+            ).length;
+
+        return msg.reply(
+`**Staff Applications**
+
+Status: **${open ? 'OPEN' : 'CLOSED'}**
+Open application tickets: **${activeCount}/10**
+Queue: **${queuedCount}**
+
+Use \`/applications open\` or \`/applications close\`.`
+        );
+      }
+
+      return msg.reply(
+        'use `/applications open`, `/applications close`, or `/applications status`.'
+      );
+    } catch (err) {
+      console.error(
+        '[applications command]',
+        err
+      );
+
+      return msg.reply(
+        "couldn't update application status."
       );
     }
   }
@@ -3414,7 +3718,7 @@ bot.command(
 
       if (
         !(
-          await userHasStaffRole(
+          await userCanConfigure(
             serverId,
             userId
           )
@@ -3449,7 +3753,7 @@ bot.command(
         sub === 'status' ||
         !raw
       ) {
-        await ensureStaffApplicationPanel(
+        await refreshStaffApplicationPanel(
           serverId
         );
 
@@ -3761,8 +4065,6 @@ bot.onButton(
     }
 
     try {
-      await i.ack();
-
       const serverId =
         await getServerId(
           i
@@ -3776,7 +4078,7 @@ bot.onButton(
 
       if (
         !(
-          await userHasStaffRole(
+          await userCanConfigure(
             serverId,
             i.user_id
           )
@@ -3811,7 +4113,7 @@ bot.onButton(
         );
       }
 
-      await ensureStaffApplicationPanel(
+      await refreshStaffApplicationPanel(
         serverId
       );
 
@@ -4019,8 +4321,6 @@ bot.onButton(
         );
       }
 
-      await i.ack();
-
       await saveApplicationRoleIds(
         session.serverId,
         [
@@ -4032,7 +4332,7 @@ bot.onButton(
         sessionId
       );
 
-      await ensureStaffApplicationPanel(
+      await refreshStaffApplicationPanel(
         session.serverId
       );
 
@@ -4054,14 +4354,14 @@ bot.onButton(
 `${status.appRoles
   .map(
     role =>
-      `• ${role.name}`
+      `â¢ ${role.name}`
   )
   .join(
     '\n'
   )}
 
 ${status.ready
-  ? '✅ **Frieren staff applications are ready.**'
+  ? 'â **Frieren staff applications are ready.**'
   : 'The role selection is saved. Run **/frierensetup** to see what is left to finish.'}`
             )
             .color(
@@ -4103,8 +4403,6 @@ bot.onButton(
   'staff_application_open',
   async i => {
     try {
-      await i.ack();
-
       const serverId =
         await getServerId(
           i
@@ -4113,6 +4411,18 @@ bot.onButton(
       if (!serverId) {
         return i.ephemeral(
           "couldn't figure out what server this is in."
+        );
+      }
+
+      if (
+        !(
+          await applicationsAreOpen(
+            serverId
+          )
+        )
+      ) {
+        return i.ephemeral(
+          'staff applications are currently closed.'
         );
       }
 
@@ -4193,20 +4503,21 @@ bot.onButton(
         );
 
       if (!freeRole) {
-        applicationData.queue.push({
-          userId:
-            i.user_id,
+        applicationData.queue
+          .push({
+            userId:
+              i.user_id,
 
-          username:
-            i.username ||
-            'applicant',
+            username:
+              i.username ||
+              'applicant',
 
-          serverId,
+            serverId,
 
-          joinedAt:
-            new Date()
-              .toISOString()
-        });
+            joinedAt:
+              new Date()
+                .toISOString()
+          });
 
         saveApplicationData();
 
@@ -4296,8 +4607,6 @@ bot.onButton(
       match[2];
 
     try {
-      await i.ack();
-
       const record =
         getActiveApplicationByChannel(
           channelId
@@ -4439,14 +4748,15 @@ bot.command(
     return msg.reply(
 `**Frieren commands**
 
-\`/info <character>\` — random character info
-\`/qotd\` — creates a new QOTD channel
-\`/hiatus\` — manga hiatus status
-\`/nextrelease\` — next manga chapter
-\`/latestchapter\` — latest manga chapter
-\`/staffroles\` — configure application staff roles
-\`/frierensetup\` — set up the staff application system
-\`/frierenhelp\` — this`
+\`/info <character>\` â random character info
+\`/qotd\` â creates a new QOTD channel
+\`/hiatus\` â manga hiatus status
+\`/nextrelease\` â next manga chapter
+\`/latestchapter\` â latest manga chapter
+\`/staffroles\` â configure application staff roles
+\`/frierensetup\` â set up the staff application system
+\`/applications\` â open/close staff applications
+\`/frierenhelp\` â this`
     );
   }
 );
@@ -4493,6 +4803,18 @@ bot.on(
       `[frieren] logged in as ${me.username}`
     );
 
+    if (
+      frierenOwnerId
+    ) {
+      console.log(
+        '[frieren] developer configuration override enabled'
+      );
+    } else {
+      console.log(
+        '[frieren] FRIEREN_OWNER_ID is not set; developer override disabled'
+      );
+    }
+
     try {
       await bot.setStatus(
         'online',
@@ -4530,7 +4852,7 @@ bot.on(
           server.id
         );
 
-        await ensureStaffApplicationPanel(
+        await refreshStaffApplicationPanel(
           server.id
         );
       }
@@ -4558,10 +4880,3 @@ bot.start().catch(
     console.error(
       '[yapper] could not start:',
       err.message
-    );
-
-    process.exit(
-      1
-    );
-  }
-);
