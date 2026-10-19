@@ -9,6 +9,24 @@ if (source.trimEnd().endsWith('err.message')) {
   source += `\n    );\n\n    process.exit(\n      1\n    );\n  }\n);\n`;
 }
 
+// Repair UTF-8 characters that were accidentally saved as mojibake.
+const mojibakeFixes = new Map([
+  ['â', '—'],
+  ['â', '–'],
+  ['â', '’'],
+  ['â¢', '•'],
+  ['â', '✓'],
+  ['â', '✅'],
+  ['â', '❌'],
+  ['â', '←'],
+  ['â', '→'],
+  ['â ï¸', '⚠️']
+]);
+
+for (const [broken, fixed] of mojibakeFixes) {
+  source = source.split(broken).join(fixed);
+}
+
 fs.writeFileSync(runtimeUrl, source, 'utf8');
 
 await import('./bot.runtime.js');
