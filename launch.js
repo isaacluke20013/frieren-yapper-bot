@@ -16,7 +16,8 @@ const mojibakeFixes = new Map([
   ['â', '’'],
   ['â¢', '•'],
   ['â', '✓'],
-  ['â', '✅'],
+  ['â
+', '✅'],
   ['â', '❌'],
   ['â', '←'],
   ['â', '→'],
@@ -25,6 +26,14 @@ const mojibakeFixes = new Map([
 
 for (const [broken, fixed] of mojibakeFixes) {
   source = source.split(broken).join(fixed);
+}
+
+const helpHeader = '**Frieren commands**\n\n';
+if (source.includes(helpHeader)) {
+  source = source.replace(
+    helpHeader,
+    helpHeader + "\\`/socialalerts\\` — configure Twitch, YouTube, and TikTok creator notifications\n"
+  );
 }
 
 fs.writeFileSync(runtimeUrl, source, 'utf8');
