@@ -11,17 +11,16 @@ if (source.trimEnd().endsWith('err.message')) {
 
 // Repair UTF-8 characters that were accidentally saved as mojibake.
 const mojibakeFixes = new Map([
-  ['â', '—'],
-  ['â', '–'],
-  ['â', '’'],
-  ['â¢', '•'],
-  ['â', '✓'],
-  ['â
-', '✅'],
-  ['â', '❌'],
-  ['â', '←'],
-  ['â', '→'],
-  ['â ï¸', '⚠️']
+  ['\u00e2\u0080\u0094', '—'],
+  ['\u00e2\u0080\u0093', '–'],
+  ['\u00e2\u0080\u0099', '’'],
+  ['\u00e2\u0080\u00a2', '•'],
+  ['\u00e2\u009c\u0093', '✓'],
+  ['\u00e2\u009c\u0085', '✅'],
+  ['\u00e2\u009d\u008c', '❌'],
+  ['\u00e2\u0086\u0090', '←'],
+  ['\u00e2\u0086\u0092', '→'],
+  ['\u00e2\u009a\u00a0\u00ef\u00b8\u008f', '⚠️']
 ]);
 
 for (const [broken, fixed] of mojibakeFixes) {
