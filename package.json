@@ -1,6 +1,6 @@
 {
   "type": "module",
   "scripts": {
-    "start": "node launch.js"
+    "start": "node start.js"
   }
 }
