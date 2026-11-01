@@ -57,6 +57,148 @@ source = source.replace(
   'AI QOTD pending'
 );
 
+// Keep routine Yapper/network hiccups from flooding Railway logs.
+source = source.replace(
+  /bot\.on\(\s*'error',\s*err => \{\s*console\.error\(\s*'\[frieren\]',\s*err\s*\);\s*\}\s*\);/m,
+`let lastTransientNetworkLogAt = 0;
+let suppressedTransientNetworkErrors = 0;
+let fatalYapperAuthError = false;
+
+bot.on(
+  'error',
+  err => {
+    const message = String(
+      err?.message ||
+      err ||
+      'unknown error'
+    );
+
+    const code = String(
+      err?.cause?.code ||
+      err?.code ||
+      ''
+    );
+
+    if (
+      /token rejected|unauthorized|http 401|\\b401\\b/i.test(
+        message
+      )
+    ) {
+      fatalYapperAuthError = true;
+      console.error('[frieren] Yapper token rejected.');
+      return;
+    }
+
+    const transient =
+      /fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|socket|network|HTTP 502|HTTP 503|HTTP 504|failed \\(502\\)|failed \\(503\\)|failed \\(504\\)/i.test(
+        `${message} ${code}`
+      );
+
+    if (transient) {
+      suppressedTransientNetworkErrors++;
+      const now = Date.now();
+
+      if (
+        now - lastTransientNetworkLogAt >=
+        60_000
+      ) {
+        const extra =
+          suppressedTransientNetworkErrors > 1
+            ? ` (${suppressedTransientNetworkErrors - 1} similar errors suppressed)`
+            : '';
+
+        console.warn(
+          `[frieren] Yapper connection interrupted; retrying automatically${extra}.`
+        );
+
+        lastTransientNetworkLogAt = now;
+        suppressedTransientNetworkErrors = 0;
+      }
+
+      return;
+    }
+
+    console.error(
+      '[frieren]',
+      err
+    );
+  }
+);`
+);
+
+// If the outer Yapper event loop ever escapes its built-in retry logic,
+// restart it inside this same Railway container instead of exiting Node.
+source = source.replace(
+  /bot\.start\(\)\.catch\(\s*err => \{\s*console\.error\(\s*'\[yapper\] could not start:',\s*err\.message\s*\);\s*process\.exit\(\s*1\s*\);\s*\}\s*\);/m,
+`const restartBotDelay =
+  ms =>
+    new Promise(
+      resolve =>
+        setTimeout(resolve, ms)
+    );
+
+async function keepFrierenAlive() {
+  let restartCount = 0;
+
+  while (true) {
+    try {
+      await bot.start();
+
+      if (fatalYapperAuthError) {
+        console.error(
+          '[yapper] fatal authentication error; stopping.'
+        );
+        process.exit(1);
+      }
+
+      console.warn(
+        '[yapper] event loop stopped unexpectedly; reconnecting.'
+      );
+    } catch (err) {
+      const message = String(
+        err?.message ||
+        err ||
+        'unknown error'
+      );
+
+      if (
+        fatalYapperAuthError ||
+        /token rejected|unauthorized|http 401|\\b401\\b/i.test(
+          message
+        )
+      ) {
+        console.error(
+          '[yapper] fatal authentication error:',
+          message
+        );
+        process.exit(1);
+      }
+
+      console.warn(
+        '[yapper] event loop stopped unexpectedly:',
+        message
+      );
+    }
+
+    bot.running = false;
+    restartCount++;
+
+    const delay = Math.min(
+      30_000,
+      3_000 * restartCount
+    );
+
+    console.warn(
+      `[yapper] reconnecting in ${Math.round(delay / 1000)}s.`
+    );
+
+    await restartBotDelay(delay);
+  }
+}
+
+void keepFrierenAlive();`
+);
+
 const GEMINI_MODEL = 'gemini-3.5-flash-lite';
 const QOTD_HISTORY_FILE = '/data/qotd-history.json';
 const originalSend = Bot.prototype.send;
