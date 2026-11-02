@@ -28,6 +28,18 @@ for (const [broken, fixed] of mojibakeFixes) {
   source = source.split(broken).join(fixed);
 }
 
+// Allow up to 30 custom staff application questions without changing
+// the separate 10-role application slot limit.
+source = source.replace(
+  /(let questions\s*=\s*Array\.isArray\(\s*existing\.questions\s*\)[\s\S]*?existing\.questions[\s\S]*?\.slice\(\s*0,\s*)10(\s*\))/m,
+  (_, before, after) => `${before}30${after}`
+);
+
+source = source.replace(
+  /(config\.questions\s*=\s*questions[\s\S]*?\.slice\(\s*0,\s*)10(\s*\))/m,
+  (_, before, after) => `${before}30${after}`
+);
+
 const helpHeader = '**Frieren commands**\n\n';
 if (source.includes(helpHeader)) {
   source = source.replace(
