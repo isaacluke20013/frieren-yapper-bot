@@ -88,12 +88,14 @@ const previousStart = Bot.prototype.start;
 Bot.prototype.start = function (...args) {
   if (!this._frierenFreshRoleSetup) {
     this._frierenFreshRoleSetup = true;
-    this.on('ready', async () => {
-      try {
-        for (const server of await this.servers()) await provision(this, server.id);
-      } catch (err) {
-        console.error('[frieren-roles] initial check failed:', err.message);
-      }
+    this.on('ready', () => {
+      void (async () => {
+        try {
+          for (const server of await this.servers()) await provision(this, server.id);
+        } catch (err) {
+          console.error('[frieren-roles] initial check failed:', err.message);
+        }
+      })();
     });
     this.on('server_add', event => {
       void provision(this, event.server_id || event.server?.id || event.id);
