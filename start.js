@@ -33,7 +33,8 @@ function save() {
 
 async function provision(bot, rawId) {
   const sid = String(rawId || '');
-  if (!sid || active.has(sid)) return;
+  if (!sid) return { status: 'skipped', reason: 'No server ID' };
+  if (active.has(sid)) return { status: 'in-progress' };
   active.add(sid);
   try {
     const [roles, channels, categories] = await Promise.all([
@@ -46,9 +47,15 @@ async function provision(bot, rawId) {
       /^app-(?:[1-9]|10)$/i.test(x.name || '') ||
       ['trial mod', 'trial priest', 'high priest', 'priest'].includes(String(x.name || '').toLowerCase())
     );
-    if (panel || category || ((started || hasSavedApplicationSetup(sid)) && !pending.has(sid))) {
+    const existingSetup = (started || hasSavedApplicationSetup(sid)) && !pending.has(sid);
+    if (panel || category || existingSetup) {
       if (pending.delete(sid)) save();
-      return;
+      return {
+        status: 'skipped',
+        reason: panel ? '#staff-applications already exists' :
+          category ? 'Staff Applications category already exists' :
+          'existing application roles or saved setup found'
+      };
     }
     if (!pending.has(sid)) { pending.add(sid); save(); }
     let created = 0;
@@ -75,13 +82,20 @@ async function provision(bot, rawId) {
     pending.delete(sid);
     save();
     if (created) console.log('[frieren-roles] created ' + created + ' setup roles in new server ' + sid);
+    return { status: 'created', created };
   } catch (err) {
     console.error('[frieren-roles] setup failed for ' + sid + ': ' + err.message);
     if (err.status === 403) console.error('[frieren-roles] Frieren needs Manage Roles and sufficient role hierarchy.');
+    return { status: 'error', error: String(err?.message || err).slice(0, 240), code: err?.status || null };
   } finally {
     active.delete(sid);
   }
 }
+
+// Authorized /frierensetup overview calls may retry a failed bootstrap and show the reason.
+Bot.prototype.provisionFreshRoles = function (serverId) {
+  return provision(this, serverId);
+};
 
 // Keep Frieren's original commands and startup behavior unchanged.
 const previousStart = Bot.prototype.start;
