@@ -3895,7 +3895,7 @@ To reset all:
 
           if (
             questions.length >=
-            3065105
+            30
           ) {
             return msg.reply(
               'you can have up to 30 application questions.'
