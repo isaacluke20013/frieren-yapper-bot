@@ -3753,6 +3753,11 @@ bot.command(
         sub === 'status' ||
         !raw
       ) {
+        const roleSetup =
+          await bot.provisionFreshRoles?.(
+            serverId
+          );
+
         await refreshStaffApplicationPanel(
           serverId
         );
@@ -3762,8 +3767,31 @@ bot.command(
             serverId
           );
 
+        let roleNotice = '';
+
+        if (roleSetup?.status === 'error') {
+          roleNotice = '⚠️ Auto role creation failed: ' +
+            roleSetup.error +
+            '. Make sure Frieren has Manage Roles and its role is high enough.';
+        } else if (roleSetup?.status === 'in-progress') {
+          roleNotice = '⏳ Frieren is still creating roles. Run /frierensetup again shortly.';
+        } else if (
+          roleSetup?.status === 'skipped' &&
+          overview.status.appRoles.length < 10
+        ) {
+          roleNotice = 'ℹ️ Auto role creation was skipped to protect existing setup: ' +
+            roleSetup.reason +
+            '. Finish selecting roles manually if this server was partly configured.';
+        } else if (
+          roleSetup?.status === 'created' &&
+          roleSetup.created > 0
+        ) {
+          roleNotice = '✅ Frieren created ' + roleSetup.created +
+            ' missing role(s) for this fresh server.';
+        }
+
         return msg.reply(
-          '',
+          roleNotice,
           {
             embeds:
               [
