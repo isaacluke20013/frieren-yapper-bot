@@ -43,18 +43,22 @@ async function provision(bot, rawId) {
     const names = new Set((roles || []).map(x => String(x.name || '').toLowerCase()));
     const panel = (channels || []).some(x => String(x.name || '').toLowerCase() === 'staff-applications');
     const category = (categories || []).some(x => String(x.name || '').toLowerCase() === 'staff applications');
-    const started = (roles || []).some(x =>
-      /^app-(?:[1-9]|10)$/i.test(x.name || '') ||
-      ['trial mod', 'trial priest', 'high priest', 'priest'].includes(String(x.name || '').toLowerCase())
-    );
-    const existingSetup = (started || hasSavedApplicationSetup(sid)) && !pending.has(sid);
-    if (panel || category || existingSetup) {
+    // A category or a few app-N roles can be leftovers from an incomplete
+    // setup. They do not mean the server has finished configuring Frieren.
+    // Never change servers with an application panel, saved selections or
+    // all ten app roles already present. An interrupted bootstrap is resumed
+    // by creating only the role names that are still missing.
+    const existingSetup = hasSavedApplicationSetup(sid) && !pending.has(sid);
+    const tenRolesAlreadyExist = REQUIRED_ROLES.slice(0, 10)
+      .every(name => names.has(name.toLowerCase()));
+
+    if (panel || existingSetup || (tenRolesAlreadyExist && !pending.has(sid))) {
       if (pending.delete(sid)) save();
       return {
         status: 'skipped',
         reason: panel ? '#staff-applications already exists' :
-          category ? 'Staff Applications category already exists' :
-          'existing application roles or saved setup found'
+          existingSetup ? 'saved staff-application configuration found' :
+          'ten application roles already exist'
       };
     }
     if (!pending.has(sid)) { pending.add(sid); save(); }
