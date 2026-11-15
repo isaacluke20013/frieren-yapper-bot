@@ -2870,7 +2870,7 @@ async function buildSetupOverview(
     status.appRoles.length ===
       10
       ? 'â 10 application roles selected'
-      : `â Create 10 temporary application roles, then choose them with **/frierensetup roles** (${status.appRoles.length}/10 currently selected)`;
+      : `â ${status.appRoles.length}/10 temporary application roles selected. **Tap Refresh Status below** to have Frieren automatically create the missing roles on a new, unconfigured server. Then tap **Choose 10 Roles** if the roles still need selecting.`;
 
   const staffLine =
     status.staffRoles.length >
@@ -2911,8 +2911,10 @@ Create a role named exactly **${REQUIRED_BOT_ROLE_NAME}**, give it **Administrat
 Create a text channel named exactly:
 **#${STAFF_PANEL_CHANNEL_NAME}**
 
-**3. Create 10 temporary application roles**
-They can have any names you want. Applicants receive one of these roles while their application is open.
+**3. Auto-create the 10 temporary application roles**
+**Tap Refresh Status below** to ask Frieren to create the temporary roles automatically in a new, unconfigured server. If this server already has an application setup, Frieren leaves its roles untouched. The bot must have Manage Roles permission.
+
+Applicants receive one of these roles while their application is open.
 
 **4. Choose those 10 roles**
 Run **/frierensetup roles** and click exactly 10 roles.
