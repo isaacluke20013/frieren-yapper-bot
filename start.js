@@ -16,7 +16,7 @@ function hasSavedApplicationSetup(serverId) {
   }
 }
 
-const REQUIRED_ROLES = [...Array.from({ length: 10 }, (_, i) => 'app-' + (i + 1)), 'Trial Priest'];
+const REQUIRED_ROLES = [...Array.from({ length: 10 }, (_, i) => 'app-' + (i + 1)), 'Trial Mod'];
 const active = new Set();
 let pending;
 try {
@@ -44,7 +44,7 @@ async function provision(bot, rawId) {
     const category = (categories || []).some(x => String(x.name || '').toLowerCase() === 'staff applications');
     const started = (roles || []).some(x =>
       /^app-(?:[1-9]|10)$/i.test(x.name || '') ||
-      ['trial priest', 'high priest', 'priest'].includes(String(x.name || '').toLowerCase())
+      ['trial mod', 'trial priest', 'high priest', 'priest'].includes(String(x.name || '').toLowerCase())
     );
     if (panel || category || ((started || hasSavedApplicationSetup(sid)) && !pending.has(sid))) {
       if (pending.delete(sid)) save();
