@@ -4,6 +4,18 @@ import './social-alerts.js';
 
 // Only create roles in servers with no existing staff-application setup.
 const ROLE_FILE = '/data/frieren-role-bootstrap.json';
+const STAFF_FILE = '/data/staff-applications.json';
+function hasSavedApplicationSetup(serverId) {
+  try {
+    const data = JSON.parse(fs.readFileSync(STAFF_FILE, 'utf8'));
+    const setup = data.setupConfig?.[serverId];
+    return (Array.isArray(setup?.appRoleIds) && setup.appRoleIds.length > 0) ||
+      setup?.applicationsOpen === false;
+  } catch {
+    return false;
+  }
+}
+
 const REQUIRED_ROLES = [...Array.from({ length: 10 }, (_, i) => 'app-' + (i + 1)), 'Trial Priest'];
 const active = new Set();
 let pending;
@@ -34,7 +46,7 @@ async function provision(bot, rawId) {
       /^app-(?:[1-9]|10)$/i.test(x.name || '') ||
       ['trial priest', 'high priest', 'priest'].includes(String(x.name || '').toLowerCase())
     );
-    if (panel || category || (started && !pending.has(sid))) {
+    if (panel || category || ((started || hasSavedApplicationSetup(sid)) && !pending.has(sid))) {
       if (pending.delete(sid)) save();
       return;
     }
