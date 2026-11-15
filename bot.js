@@ -934,7 +934,7 @@ async function getSetupConfig(
           .filter(Boolean)
           .slice(
             0,
-            10
+            30
           )
       : [
           ...DEFAULT_QUESTIONS
@@ -1053,7 +1053,7 @@ async function saveQuestions(
       .filter(Boolean)
       .slice(
         0,
-        10
+        30
       );
 
   if (
@@ -3895,10 +3895,10 @@ To reset all:
 
           if (
             questions.length >=
-            10
+            3065105
           ) {
             return msg.reply(
-              'you can have up to 10 application questions.'
+              'you can have up to 30 application questions.'
             );
           }
 
